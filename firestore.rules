@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function esVendedor() {
+      return request.auth != null;
+    }
+
+    function camposModificados() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    match /rifas/{id} {
+      allow read: if true;
+      allow create, delete: if esVendedor();
+
+      allow update: if esVendedor() || reservaPublicaValida();
+
+      function reservaPublicaValida() {
+        return camposModificados().hasOnly(['numeros', 'reservas_temp'])
+          && request.resource.data.numeros.size() == resource.data.numeros.size()
+          && (!camposModificados().hasAny(['numeros'])
+              || request.resource.data.numeros.diff(resource.data.numeros).affectedKeys().size() <= 20)
+          && (!camposModificados().hasAny(['reservas_temp'])
+              || request.resource.data.reservas_temp.diff(resource.data.reservas_temp).affectedKeys().size() <= 20);
+      }
+    }
+
+    match /participantes/{id} {
+      allow read: if true;
+
+      allow create: if request.resource.data.pagado == false
+        && !('_eliminado' in request.resource.data)
+        && request.resource.data.keys().hasAll(['numeros', 'nombre', 'apellido', 'telefono', 'metodoPago'])
+        && request.resource.data.numeros is list
+        && request.resource.data.numeros.size() > 0;
+
+      allow update, delete: if esVendedor();
+    }
+  }
+}
